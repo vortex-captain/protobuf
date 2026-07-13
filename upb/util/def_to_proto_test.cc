@@ -345,4 +345,18 @@ TEST(FuzzTest, OptionDependency) {
       )pb"));
 }
 
+TEST(FuzzTest, InvalidMapEntryValueRepeated) {
+  RoundTripDescriptor(ParseTextProtoOrDie(R"pb(
+    file {
+      name: "test.proto"
+      message_type {
+        name: "MapEntry"
+        options { map_entry: true }
+        field { name: "key" number: 1 label: LABEL_OPTIONAL type: TYPE_STRING }
+        field { name: "value" number: 2 label: LABEL_REPEATED type: TYPE_INT32 }
+      }
+    }
+  )pb"));
+}
+
 }  // namespace upb_test
