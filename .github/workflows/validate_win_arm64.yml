@@ -1,11 +1,12 @@
 name: Validate win_arm64 wheel (TEMP)
 
 # TEMPORARY workflow for fork validation of the native windows-11-arm wheel build.
-# It builds //python/dist:binary_wheel + :test_wheel via Bazel on the ARM64 runner
-# and runs the packaged unit tests -- the same steps as the `windows_arm64` job in
-# test_upb.yml, but self-contained and triggerable by a simple push so it can run
-# on a fork without the GAR-gated `build_wheels`/`test_runner` machinery.
-# Remove before merging upstream.
+# It builds //python/dist:binary_wheel + :test_wheel via bare bazelisk on the ARM64
+# runner and runs the packaged unit tests. It deliberately does NOT use
+# protocolbuffers/protobuf-ci/bazel@v5 (that action mandates GCP/GAR auth, which
+# forks don't have). The real `windows_arm64` job in test_upb.yml uses that action
+# and therefore only runs on upstream; this workflow is the fork-runnable
+# equivalent used to validate the build itself. Remove before merging upstream.
 
 on:
   push:
@@ -24,27 +25,30 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.11"]
+    env:
+      USE_BAZEL_VERSION: "9.0.0"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Build win_arm64 binary + test wheels
-        uses: protocolbuffers/protobuf-ci/bazel@v5
-        with:
-          credentials: ${{ secrets.GAR_SERVICE_ACCOUNT }}
-          bazel-cache: python_windows_arm64
-          version: 9.0.0
-          bazel: >-
-            build --config=windows_arm64
-            --platforms=//build_defs:win-arm64
-            --//python:limited_api=True --//python:python_version=311
-            //python/dist:binary_wheel //python/dist:test_wheel
 
       - name: Setup Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
         with:
           python-version: ${{ matrix.python-version }}
           architecture: arm64
+
+      - name: Install Bazelisk
+        shell: bash
+        run: npm install -g @bazel/bazelisk
+
+      - name: Build win_arm64 binary + test wheels
+        shell: bash
+        run: |
+          set -eux
+          bazelisk build --config=windows_arm64 \
+            --platforms=//build_defs:win-arm64 \
+            --//python:limited_api=True --//python:python_version=311 \
+            //python/dist:binary_wheel //python/dist:test_wheel
 
       - name: Install wheels and run unit tests
         shell: bash
@@ -53,7 +57,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install tzdata
           pip install -r python/requirements.txt
-          # Locate the freshly built wheels (bazel convenience symlink).
           WHEELS=$(find bazel-bin/python/dist -name 'protobuf*.whl' -printf '%h\n' | head -1)
           echo "wheels dir: ${WHEELS}"
           ls -l "${WHEELS}"
