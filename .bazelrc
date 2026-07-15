@@ -51,3 +51,8 @@ try-import-if-bazel-version >=9.0.0 %workspace%/ci/bazel9.bazelrc
 
 # Use clang-cl by default on Windows (see https://github.com/protocolbuffers/protobuf/issues/20085).
 build:windows --extra_toolchains=@local_config_cc//:cc-toolchain-x64_windows-clang-cl --extra_execution_platforms=//build_defs:x64_windows-clang-cl --host_platform=//build_defs:x64_windows-clang-cl
+
+# Native Windows on ARM64 (clang-cl). Selected explicitly (via --config=windows_arm64)
+# on the windows-11-arm runner; overrides the x64 host/exec platform that the
+# platform-specific `build:windows` config sets by default.
+build:windows_arm64 --extra_toolchains=@local_config_cc//:cc-toolchain-arm64_windows-clang-cl --extra_execution_platforms=//build_defs:arm64_windows-clang-cl --host_platform=//build_defs:arm64_windows-clang-cl

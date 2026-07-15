@@ -46,6 +46,28 @@ platform(
     ],
 )
 
+# Windows on ARM64. Target platform for the win_arm64 Python wheel, which is
+# built natively on a windows-11-arm runner (see .github/workflows/test_upb.yml
+# and the build:windows_arm64 config in //.bazelrc).
+platform(
+    name = "win-arm64",
+    constraint_values = [
+        "@platforms//cpu:aarch64",
+        "@platforms//os:windows",
+    ],
+)
+
+# Host/execution platform for native ARM64 Windows builds with clang-cl, mirroring
+# x64_windows-clang-cl above.
+platform(
+    name = "arm64_windows-clang-cl",
+    constraint_values = [
+        "@platforms//cpu:aarch64",
+        "@platforms//os:windows",
+        "@rules_cc//cc/private/toolchain:clang-cl",
+    ],
+)
+
 selects.config_setting_group(
     name = "config_msvc",
     match_any = [

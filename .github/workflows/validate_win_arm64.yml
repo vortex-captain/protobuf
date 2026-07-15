@@ -1,0 +1,65 @@
+name: Validate win_arm64 wheel (TEMP)
+
+# TEMPORARY workflow for fork validation of the native windows-11-arm wheel build.
+# It builds //python/dist:binary_wheel + :test_wheel via Bazel on the ARM64 runner
+# and runs the packaged unit tests -- the same steps as the `windows_arm64` job in
+# test_upb.yml, but self-contained and triggerable by a simple push so it can run
+# on a fork without the GAR-gated `build_wheels`/`test_runner` machinery.
+# Remove before merging upstream.
+
+on:
+  push:
+    branches:
+      - win-arm64-ci
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows_arm64:
+    name: Windows ARM64 Python ${{ matrix.python-version }}
+    runs-on: windows-11-arm
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build win_arm64 binary + test wheels
+        uses: protocolbuffers/protobuf-ci/bazel@v5
+        with:
+          credentials: ${{ secrets.GAR_SERVICE_ACCOUNT }}
+          bazel-cache: python_windows_arm64
+          version: 9.0.0
+          bazel: >-
+            build --config=windows_arm64
+            --platforms=//build_defs:win-arm64
+            --//python:limited_api=True --//python:python_version=311
+            //python/dist:binary_wheel //python/dist:test_wheel
+
+      - name: Setup Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        with:
+          python-version: ${{ matrix.python-version }}
+          architecture: arm64
+
+      - name: Install wheels and run unit tests
+        shell: bash
+        run: |
+          set -eux
+          python -m pip install --upgrade pip
+          pip install tzdata
+          pip install -r python/requirements.txt
+          # Locate the freshly built wheels (bazel convenience symlink).
+          WHEELS=$(find bazel-bin/python/dist -name 'protobuf*.whl' -printf '%h\n' | head -1)
+          echo "wheels dir: ${WHEELS}"
+          ls -l "${WHEELS}"
+          pip install -vvv --no-index --find-links "${WHEELS}" protobuf protobuftests
+          python -c 'from google._upb import _message; assert "google._upb._message.MessageMeta" in str(_message.MessageMeta)'
+          TESTS=$(pip show -f protobuftests | grep _test.py | grep --invert-match -e _pybind11_test.py -e proto_api_test.py | sed 's,[/\\],.,g' | sed -E 's,.py$,,g')
+          for test in ${TESTS[@]}; do
+            python -m unittest -v ${test}
+          done

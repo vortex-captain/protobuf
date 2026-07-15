@@ -349,10 +349,16 @@ python_headers.nuget_package(
     sha256 = "4474c83c25625d93e772e926f95f4cd398a0abbb52793625fa30f39af3d2cc00",
     version = "3.10.0",
 )
+python_headers.nuget_package(
+    cpu = "arm64",
+    sha256 = "2f5b3bee38850fdde1b44227a23b8130d329839558376d2eb11099ce2b2cc33c",
+    version = "3.11.9",
+)
 use_repo(
     python_headers,
     "nuget_python_i686_3.10.0",
     "nuget_python_x86-64_3.10.0",
+    "nuget_python_arm64_3.11.9",
     "python-3.10.0",
 )
 

@@ -227,6 +227,82 @@ jobs:
             python -m unittest -v ${test}
           done
 
+  # Windows on ARM64 wheels are built and tested natively on the windows-11-arm
+  # runner (rather than cross-compiled in the Linux `build_wheels` job like the
+  # other binary wheels), because there is no aarch64 Windows cross toolchain in
+  # the release container. This follows the same native-Windows-Bazel pattern as
+  # the `windows` job above. The build and the tests live in a single job so it is
+  # self-contained (no dependency on the Linux `build_wheels` artifact or on the
+  # release GAR image), which also lets it run on forks.
+  windows_arm64:
+    name: ${{ matrix.continuous-only && inputs.continuous-prefix || '' }} Windows ARM64 Python ${{ matrix.python-version }}
+    runs-on: windows-11-arm
+    if: ${{ github.event_name != 'pull_request_target' }}
+    strategy:
+      fail-fast: false   # Don't cancel all jobs if one fails.
+      matrix:
+        include:
+          # abi3 wheel: a single cp311 wheel covers Python 3.11+ (the first
+          # CPython version with official Windows/ARM64 builds). Test the oldest
+          # and newest supported versions; the middle versions on continuous runs.
+          - { python-version: "3.11" }
+          - { python-version: "3.12", continuous-only: true }
+          - { python-version: "3.13", continuous-only: true }
+          - { python-version: "3.14" }
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout pending changes
+        if: ${{ !matrix.continuous-only || inputs.continuous-run }}
+        uses: protocolbuffers/protobuf-ci/checkout@v5
+        with:
+          ref: ${{ inputs.safe-checkout }}
+      - name: Build win_arm64 binary + test wheels
+        if: ${{ !matrix.continuous-only || inputs.continuous-run }}
+        uses: protocolbuffers/protobuf-ci/bazel@v5
+        with:
+          credentials: ${{ secrets.GAR_SERVICE_ACCOUNT }}
+          bazel-cache: python_windows_arm64
+          version: 9.0.0
+          bazel: >-
+            build --config=windows_arm64
+            --platforms=//build_defs:win-arm64
+            --//python:limited_api=True --//python:python_version=311
+            //python/dist:binary_wheel //python/dist:test_wheel
+      - name: Setup Python
+        if: ${{ !matrix.continuous-only || inputs.continuous-run }}
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        with:
+          python-version: ${{ matrix.python-version }}
+          architecture: arm64
+      - name: Setup Python venv
+        if: ${{ !matrix.continuous-only || inputs.continuous-run }}
+        run: |
+          python -m pip install --upgrade pip
+          python -m venv env
+          source env/Scripts/activate
+          echo "VIRTUAL ENV:" $VIRTUAL_ENV
+      - name: Install tzdata
+        if: ${{ !matrix.continuous-only || inputs.continuous-run }}
+        run: pip install tzdata  # Windows doesn't ship the IANA tz database.
+      - name: Install requirements
+        if: ${{ !matrix.continuous-only || inputs.continuous-run }}
+        run: pip install -r python/requirements.txt
+      - name: Install Protobuf Binary + Test Wheels
+        if: ${{ !matrix.continuous-only || inputs.continuous-run }}
+        run: pip install -vvv --no-index --find-links bazel-bin/python/dist protobuf protobuftests
+      - name: Test that module is importable
+        if: ${{ !matrix.continuous-only || inputs.continuous-run }}
+        run: python -v -c 'from google._upb import _message; assert "google._upb._message.MessageMeta" in str(_message.MessageMeta)'
+      - name: Run unit tests
+        if: ${{ !matrix.continuous-only || inputs.continuous-run }}
+        run: |
+          TESTS=$(pip show -f protobuftests | grep _test.py | grep --invert-match -e _pybind11_test.py -e proto_api_test.py | sed 's,[/\\],.,g' | sed -E 's,.py$,,g')
+          for test in ${TESTS[@]}; do
+            python -m unittest -v ${test}
+          done
+
   test_pure_python_wheels:
     name: Test Pure Python Wheels
     needs: build_wheels
