@@ -1,0 +1,3 @@
+# Generated build/test scratch dirs (created by build_wheel.py / run_ci_tests.py).
+_build/
+_teststage/

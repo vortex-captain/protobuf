@@ -1,0 +1,73 @@
+name: Validate win_arm64 wheel (setuptools)
+
+# Fork-validatable native build of the win_arm64 (cp311-abi3) protobuf Python
+# wheel using setuptools + MSVC on a windows-11-arm runner (Bazel cannot build
+# the Python extension on a Windows host -- system_python.bzl marks Windows
+# unsupported). Builds the wheel, then runs the packaged unit tests (the same
+# selection CI uses: all *_test.py except *_pybind11_test.py / proto_api_test.py).
+
+on:
+  push:
+    branches:
+      - win-arm64-setuptools
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows_arm64:
+    name: Windows ARM64 Python ${{ matrix.python-version }}
+    runs-on: windows-11-arm
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        with:
+          python-version: ${{ matrix.python-version }}
+          architecture: arm64
+
+      - name: Download protoc
+        shell: bash
+        run: |
+          set -eux
+          curl -L -o protoc.zip \
+            https://github.com/protocolbuffers/protobuf/releases/download/v36.0-rc1/protoc-36.0-rc-1-win64.zip
+          mkdir -p "$RUNNER_TEMP/protoc"
+          unzip -q protoc.zip -d "$RUNNER_TEMP/protoc"
+          "$RUNNER_TEMP/protoc/bin/protoc.exe" --version
+
+      - name: Build win_arm64 wheel
+        shell: bash
+        env:
+          PROTOC: ${{ runner.temp }}/protoc/bin/protoc.exe
+        run: |
+          set -eux
+          python win_arm64_build/build_wheel.py
+
+      - name: Install wheel + test deps
+        shell: bash
+        run: |
+          set -eux
+          python -m pip install --upgrade pip
+          pip install tzdata
+          pip install -r python/requirements.txt
+          WHEEL=$(find win_arm64_build/_build/dist -name '*.whl' | head -1)
+          echo "wheel: ${WHEEL}"
+          pip install -vvv "${WHEEL}"
+          python -c 'from google._upb import _message; assert "google._upb._message.MessageMeta" in str(_message.MessageMeta)'
+          python -c 'import platform,sys; from google.protobuf.internal import api_implementation as a; print(sys.version, platform.machine(), "impl=", a.Type())'
+
+      - name: Run CI unit tests
+        shell: bash
+        env:
+          PROTOC: ${{ runner.temp }}/protoc/bin/protoc.exe
+        run: |
+          set -eux
+          python win_arm64_build/run_ci_tests.py
